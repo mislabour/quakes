@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Enhanced Earthquake Overlay</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      height: 100%;
+      background: black;
+      font-family: Arial, sans-serif;
+    }
+
+    #bgCanvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+    }
+
+    .quake-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      z-index: 1;
+      width: 90%;
+    }
+
+    .quake-entry {
+      background: rgba(0, 0, 0, 0.5);
+      border-radius: 12px;
+      margin: 8px auto;
+      padding: 12px;
+      width: 80%;
+      animation: slideIn 1s forwards;
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.1);
+    }
+
+    .magnitude {
+      font-size: 32px;
+      font-weight: bold;
+      text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+    }
+
+    .details {
+      font-size: 20px;
+      color: #fff;
+      margin-top: 5px;
+    }
+
+    .time {
+      font-size: 16px;
+      color: #ccc;
+      margin-top: 3px;
+    }
+
+    .mag-bar {
+      height: 8px;
+      border-radius: 4px;
+      margin-top: 8px;
+      background: linear-gradient(to right, red, yellow);
+      opacity: 0.8;
+    }
+
+    @keyframes slideIn {
+      from { transform: translateY(50px); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bgCanvas"></canvas>
+  <div class="quake-container" id="quake-container"></div>
+
+  <script>
+    const canvas = document.getElementById("bgCanvas");
+    const ctx = canvas.getContext("2d");
+    let particles = [];
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    class Particle {
+      constructor() {
+        this.reset();
+      }
+      reset() {
+        this.x = Math.random() * canvas.width;
+        this.y = Math.random() * canvas.height;
+        this.size = Math.random() * 2 + 1;
+        this.speedX = Math.random() * 1 - 0.5;
+        this.speedY = Math.random() * 1 - 0.5;
+      }
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        if (this.x < 0 || this.x > canvas.width || this.y < 0 || this.y > canvas.height) {
+          this.reset();
+        }
+      }
+      draw() {
+        ctx.fillStyle = "rgba(0, 255, 255, 0.3)";
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function initParticles(num) {
+      particles = [];
+      for (let i = 0; i < num; i++) {
+        particles.push(new Particle());
+      }
+    }
+
+    function animateParticles() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let p of particles) {
+        p.update();
+        p.draw();
+      }
+      requestAnimationFrame(animateParticles);
+    }
+
+    initParticles(150);
+    animateParticles();
+
+    async function fetchQuakes() {
+      const url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson";
+      const res = await fetch(url);
+      const data = await res.json();
+
+      // Sort by time (most recent first), take 20
+      const quakes = data.features.sort((a, b) => b.properties.time - a.properties.time).slice(0, 20);
+
+      const container = document.getElementById("quake-container");
+      container.innerHTML = "";
+
+      quakes.forEach(q => {
+        const mag = q.properties.mag ? q.properties.mag.toFixed(1) : "N/A";
+        const place = q.properties.place;
+        const timeAgo = timeSince(new Date(q.properties.time));
+
+        const entry = document.createElement("div");
+        entry.className = "quake-entry";
+
+        // Magnitude element
+        const magDiv = document.createElement("div");
+        magDiv.className = "magnitude";
+        magDiv.textContent = `M ${mag}`;
+
+        // Color by magnitude
+        if (mag >= 6) {
+          magDiv.style.color = "red";
+          magDiv.style.textShadow = "0 0 20px red";
+        } else if (mag >= 5) {
+          magDiv.style.color = "orange";
+          magDiv.style.textShadow = "0 0 15px orange";
+        } else if (mag >= 4) {
+          magDiv.style.color = "yellow";
+          magDiv.style.textShadow = "0 0 12px yellow";
+        } else {
+          magDiv.style.color = "lightgreen";
+          magDiv.style.textShadow = "0 0 10px lightgreen";
+        }
+
+        const detailsDiv = document.createElement("div");
+        detailsDiv.className = "details";
+        detailsDiv.textContent = place;
+
+        const timeDiv = document.createElement("div");
+        timeDiv.className = "time";
+        timeDiv.textContent = `${timeAgo} ago`;
+
+        // Magnitude bar
+        const barDiv = document.createElement("div");
+        barDiv.className = "mag-bar";
+        barDiv.style.width = `${Math.min(mag * 25, 300)}px`; // Scale bar length
+
+        entry.appendChild(magDiv);
+        entry.appendChild(detailsDiv);
+        entry.appendChild(timeDiv);
+        entry.appendChild(barDiv);
+
+        container.appendChild(entry);
+      });
+    }
+
+    function timeSince(date) {
+      const seconds = Math.floor((new Date() - date) / 1000);
+      let interval = Math.floor(seconds / 3600);
+      if (interval >= 1) return interval + "h";
+      interval = Math.floor(seconds / 60);
+      if (interval >= 1) return interval + "m";
+      return seconds + "s";
+    }
+
+    // Initial load
+    fetchQuakes();
+
+    // Refresh every 5 minutes
+    setInterval(fetchQuakes, 5 * 60 * 1000);
+  </script>
+</body>
+</html>
