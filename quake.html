@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Earthquake Overlay</title>
+  <style>
+    body {
+      margin: 0;
+      background: black;
+      font-family: Arial, sans-serif;
+      color: white;
+      overflow: hidden;
+    }
+    .quake-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      width: 90%;
+    }
+    .quake {
+      margin: 10px 0;
+      font-size: 28px;
+      opacity: 0;
+      animation: fadein 2s forwards;
+    }
+    @keyframes fadein {
+      to { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <div class="quake-container" id="quake-container"></div>
+
+  <script>
+    async function fetchQuakes() {
+      const url = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_day.geojson";
+      const res = await fetch(url);
+      const data = await res.json();
+
+      // Sort by time (most recent first)
+      const quakes = data.features.sort((a, b) => b.properties.time - a.properties.time).slice(0, 6);
+
+      const container = document.getElementById("quake-container");
+      container.innerHTML = "";
+
+      quakes.forEach(q => {
+        const mag = q.properties.mag.toFixed(1);
+        const place = q.properties.place;
+        const timeAgo = timeSince(new Date(q.properties.time));
+
+        // Create div
+        const quakeDiv = document.createElement("div");
+        quakeDiv.className = "quake";
+        quakeDiv.textContent = `M ${mag} — ${place} — ${timeAgo} ago`;
+
+        // Color by magnitude
+        if (mag >= 6) {
+          quakeDiv.style.color = "red";
+        } else if (mag >= 5) {
+          quakeDiv.style.color = "orange";
+        } else if (mag >= 4) {
+          quakeDiv.style.color = "yellow";
+        } else {
+          quakeDiv.style.color = "green";
+        }
+
+        container.appendChild(quakeDiv);
+      });
+    }
+
+    function timeSince(date) {
+      const seconds = Math.floor((new Date() - date) / 1000);
+      let interval = Math.floor(seconds / 3600);
+      if (interval >= 1) return interval + "h";
+      interval = Math.floor(seconds / 60);
+      if (interval >= 1) return interval + "m";
+      return seconds + "s";
+    }
+
+    // Initial load
+    fetchQuakes();
+
+    // Refresh every 5 minutes
+    setInterval(fetchQuakes, 5 * 60 * 1000);
+  </script>
+</body>
+</html>
