@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Latest Earthquake on Globe</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: #181818; height: 100%; font-family: Arial, sans-serif; }
+    #globe { width: 100vw; height: 100vh; }
+    #infoBox {
+      position: absolute;
+      bottom: 24px;
+      left: 24px;
+      background: rgba(255,255,255,0.92);
+      color: #232323;
+      padding: 18px 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 14px rgba(0,0,0,0.33);
+      min-width: 260px;
+      font-size: 1.1em;
+      z-index: 2;
+    }
+    #infoBox strong { color: #d90004; }
+    @media (max-width: 599px) {
+      #infoBox { left: 5vw; right: 5vw; min-width: unset; }
+    }
+  </style>
+</head>
+<body>
+  <div id="globe"></div>
+  <div id="infoBox">Loading latest earthquake...</div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.min.js"></script>
+  <script>
+    // Setup scene
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(28, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 0, 24);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.getElementById('globe').appendChild(renderer.domElement);
+
+    // Controls: Only allow minimal zoom/pan, disable auto-rotation
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enablePan = false;
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.15;
+    controls.minDistance = 14; controls.maxDistance = 34;
+    controls.rotateSpeed = 0.8;
+    controls.enableZoom = true;
+    // Optionally, position Earth so Americas are visible:
+    controls.target.set(0, 0, 0); camera.lookAt(0,0,0);
+
+    // Bright daytime globe image for clarity
+    const globeTextureURL = 'https://upload.wikimedia.org/wikipedia/commons/8/83/Equirectangular_projection_SW.jpg';
+    const sphereGeometry = new THREE.SphereGeometry(9, 60, 60);
+    const texture = new THREE.TextureLoader().load(globeTextureURL, () => renderer.render(scene, camera));
+    const sphereMaterial = new THREE.MeshBasicMaterial({ map: texture });
+    const earth = new THREE.Mesh(sphereGeometry, sphereMaterial);
+    scene.add(earth);
+
+    // Will store the marker so we can update
+    let markerObj = null;
+
+    function toShortUTC(ts) {
+      const D = new Date(ts);
+      return `${D.getUTCFullYear()}-${(D.getUTCMonth()+1).toString().padStart(2,'0')}-${D.getUTCDate().toString().padStart(2,'0')} ${D.getUTCHours().toString().padStart(2,'0')}:${D.getUTCMinutes().toString().padStart(2,'0')} UTC`;
+    }
+
+    async function showLatestEarthquake() {
+      try {
+        const res = await fetch('https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson');
+        const data = await res.json();
+        const f = data.features[0];
+        const [lon, lat] = [f.geometry.coordinates[0], f.geometry.coordinates[1]];
+        const mag = f.properties.mag || 0;
+        const place = f.properties.place || "Unknown location";
+        const time = toShortUTC(f.properties.time);
+
+        // Remove previous if exists
+        if (markerObj) scene.remove(markerObj);
+
+        // Convert lat/lon to globe coordinates
+        const phi = (90-lat) * Math.PI/180, theta = (lon+180)*Math.PI/180;
+        const radius = 9.14;
+        const x = radius * Math.sin(phi) * Math.cos(theta);
+        const y = radius * Math.cos(phi);
+        const z = radius * Math.sin(phi) * Math.sin(theta);
+
+        // Create marker (large and red for visibility)
+        const marker = new THREE.Mesh(
+          new THREE.SphereGeometry(0.38 + Math.max(0, mag-2)*0.06, 24, 24),
+          new THREE.MeshBasicMaterial({ color: 0xff1a11 })
+        );
+        marker.position.set(x, y, z);
+        scene.add(marker);
+        markerObj = marker;
+
+        // Info box update
+        document.getElementById('infoBox').innerHTML =
+          `<strong>Latest Earthquake</strong><br>
+          <span style="font-size:1.2em;">M${mag.toFixed(1)}</span> – ${place}<br>
+          <span style="color:#484848;">${time}</span>`;
+
+        renderer.render(scene, camera);
+      } catch {
+        document.getElementById('infoBox').innerHTML = "Failed to load earthquake data.";
+      }
+    }
+
+    // Fetch once, update every few minutes for demo
+    showLatestEarthquake();
+    setInterval(showLatestEarthquake, 180000);
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
